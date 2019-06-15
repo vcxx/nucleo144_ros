@@ -1,30 +1,62 @@
+// TODO:
+// 1. samemode synchronize (all of the stips)
+// 2. stop subscribe SAME message all the time
+// 3. test durability 
+// 2019.06.14 edit by Vincy
 #include <Timer.h>
 #include <ros.h>
+#include <ros/time.h>
 #include <std_msgs/String.h>
 #include <std_msgs/ColorRGBA.h>
+#include <std_msgs/Float64.h>
 #include <Adafruit_NeoPixel.h>
 #ifdef __AVR__
   #include <avr/power.h>
 #endif
-
-#define PIN_FRONT_LEFT D7
-#define PIN_FRONT_RIGHT D8
-#define PIN_TOP_LEFT D9
-#define PIN_TOP_RIGHT D10
+#include <SPI.h>
+  
+#define PIN_FRONT_LEFT 31
+#define PIN_FRONT_RIGHT 33
+#define PIN_TOP_LEFT 35
+#define PIN_TOP_RIGHT 37
+#define PIN_LIDAR 39
+#define PIN_NONE 41
+#define PIN_BOTTOM_LEFT 43
+#define PIN_BOTTOM_RIGHT 45
+#define PIN_BACK_LEFT 32
+#define PIN_BACK_RIGHT 34
+#define PIN_EYE_LEFT 36
+#define PIN_EYE_RIGHT 38
 
 #define PIXEL_FRONT_LEFT 92
 #define PIXEL_FRONT_RIGHT 91
 #define PIXEL_TOP_LEFT 100
 #define PIXEL_TOP_RIGHT 100
+#define PIXEL_LIDAR 50
+#define PIXEL_NONE 10
+#define PIXEL_BOTTOM_LEFT 100
+#define PIXEL_BOTTOM_RIGHT 100
+#define PIXEL_BACK_LEFT 79
+#define PIXEL_BACK_RIGHT 79
+#define PIXEL_EYE_LEFT 20
+#define PIXEL_EYE_RIGHT 20
 
 #define LED_RATE_ 20   // period in ms
 #define SHOW_COLOR_RATE_ 20   // period in ms
 #define UPDATE_RGB_RATE_ 15
 
+// ROS setup
+ros::NodeHandle nh;
 
 // Functions
 void frontCb( const std_msgs::ColorRGBA& rec_msg);
 void topCb( const std_msgs::ColorRGBA& rec_msg);
+void lidarCb( const std_msgs::ColorRGBA& rec_msg);
+void bottomCb( const std_msgs::ColorRGBA& rec_msg);
+void strip_5thCb( const std_msgs::ColorRGBA& rec_msg);
+void strip_6thCb( const std_msgs::ColorRGBA& rec_msg);
+void backCb( const std_msgs::ColorRGBA& rec_msg);
+void eyeCb( const std_msgs::ColorRGBA& rec_msg);
 
 void initial_neopixel(void);
 void update_rgb(void* context);
@@ -43,14 +75,38 @@ void rightTurn(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, uint32_t 
 // Parameter
 bool blink_flag_front = true;
 bool blink_flag_top = true;
+bool blink_flag_lidar = true;
+bool blink_flag_bottom = true;
+bool blink_flag_back = true;
+bool blink_flag_eye = true;
+
 bool snake_flag_front = true;
 bool snake_flag_top = true;
+bool snake_flag_lidar = true;
+bool snake_flag_bottom = true;
+bool snake_flag_back = true;
+bool snake_flag_eye = true;
+
 bool breath_flag_front = true;
 bool breath_flag_top = true;
+bool breath_flag_lidar = true;
+bool breath_flag_bottom = true;
+bool breath_flag_back = true;
+bool breath_flag_eye = true;
+
 long count_front = 0;
 long count_top = 0;
+long count_lidar = 0;
+long count_bottom = 0;
+long count_back = 0;
+long count_eye = 0;
+
 long pixelhue_front = 0;
 long pixelhue_top = 0;
+long pixelhue_lidar = 0;
+long pixelhue_bottom = 0;
+long pixelhue_back = 0;
+long pixelhue_eye = 0;
 
 
 // Parameter 1 = number of pixels in strip
@@ -62,6 +118,14 @@ Adafruit_NeoPixel strip_FRONT_LEFT = Adafruit_NeoPixel(PIXEL_FRONT_LEFT, PIN_FRO
 Adafruit_NeoPixel strip_FRONT_RIGHT = Adafruit_NeoPixel(PIXEL_FRONT_RIGHT, PIN_FRONT_RIGHT, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel strip_TOP_LEFT = Adafruit_NeoPixel(PIXEL_TOP_LEFT, PIN_TOP_LEFT, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel strip_TOP_RIGHT = Adafruit_NeoPixel(PIXEL_TOP_RIGHT, PIN_TOP_RIGHT, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip_LIDAR = Adafruit_NeoPixel(PIXEL_LIDAR, PIN_LIDAR, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip_NONE = Adafruit_NeoPixel(PIXEL_NONE, PIN_NONE, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip_BOTTOM_LEFT = Adafruit_NeoPixel(PIXEL_BOTTOM_LEFT, PIN_BOTTOM_LEFT, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip_BOTTOM_RIGHT = Adafruit_NeoPixel(PIXEL_BOTTOM_RIGHT, PIN_BOTTOM_RIGHT, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip_BACK_LEFT = Adafruit_NeoPixel(PIXEL_BACK_LEFT, PIN_BACK_LEFT, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip_BACK_RIGHT = Adafruit_NeoPixel(PIXEL_BACK_RIGHT, PIN_BACK_RIGHT, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip_EYE_LEFT = Adafruit_NeoPixel(PIXEL_EYE_LEFT, PIN_EYE_LEFT, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip_EYE_RIGHT = Adafruit_NeoPixel(PIXEL_EYE_RIGHT, PIN_EYE_RIGHT, NEO_GRB + NEO_KHZ800);
 
 // IMPORTANT: To reduce NeoPixel burnout risk, add 1000 uF capacitor across
 // pixel power leads, add 300 - 500 Ohm resistor on first pixel's data input
@@ -75,19 +139,52 @@ Timer t_show_color;
 
 // ROS messages
 std_msgs::ColorRGBA front_rgba_, top_rgba_;
+std_msgs::ColorRGBA lidar_rgba_, bottom_rgba_;
+std_msgs::ColorRGBA back_rgba_, eye_rgba_;
 std_msgs::String str_msg;
+std_msgs::Float64 nucleo_msg;
 
 // ROS setup
-ros::NodeHandle nh;
+//ros::NodeHandle nh;
 ros::Subscriber<std_msgs::ColorRGBA> sub_strip_front("strip_front", &frontCb);
 ros::Subscriber<std_msgs::ColorRGBA> sub_strip_top("strip_top", &topCb);
+ros::Subscriber<std_msgs::ColorRGBA> sub_strip_lidar("strip_lidar", &lidarCb);
+ros::Subscriber<std_msgs::ColorRGBA> sub_strip_bottom("strip_bottom", &bottomCb);
+ros::Publisher pub_nucleo("nucleo_data", &nucleo_msg);
+ros::Subscriber<std_msgs::ColorRGBA> sub_strip_back("strip_back", &backCb);
+ros::Subscriber<std_msgs::ColorRGBA> sub_strip_eye("strip_eye", &eyeCb);
+
 //ros::Publisher chatter("chatter", &str_msg);
 //char hello[] = "hello world!";
 //char looper[] = "looper!";
 //char cstr[] = "";
 
+/// For Prescaler == 64
+///  1 秒 / (100 000 000 / 64) = 1/1562500 =  0.00000064 sec / per cycle
+/// 0.1 sec / 0.00000064 sec -1 = 156250 -1 = 156249
+/// 0.0001 sec / 0.000004 sec -1 = 25 -1 = 24
+volatile int ggyy = 1; 
+const int myTOP = 10000;
+ISR(TIMER1_COMPA_vect)
+{
+  strip_FRONT_LEFT.show(); 
+  strip_FRONT_RIGHT.show(); 
+  strip_TOP_LEFT.show(); 
+  strip_TOP_RIGHT.show(); 
+  strip_LIDAR.show(); 
+  strip_NONE.show(); 
+  strip_BOTTOM_LEFT.show(); 
+  strip_BOTTOM_RIGHT.show();   
+  pub_nucleo.publish(&nucleo_msg);  
+  ggyy = 1 - ggyy; //  給下次進入  ISR 用
+}
+
+
 
 void setup() {
+  Serial.begin(57600);
+  delay(100);
+  
   // This is for Trinket 5V 16MHz, you can remove these three lines if you are not using a Trinket
   #if defined (__AVR_ATtiny85__)
     if (F_CPU == 16000000) clock_prescale_set(clock_div_1);
@@ -105,18 +202,45 @@ void setup() {
   nh.initNode();
   nh.subscribe(sub_strip_front);  
   nh.subscribe(sub_strip_top);  
+  nh.subscribe(sub_strip_lidar);  
+  nh.subscribe(sub_strip_bottom); 
+  nh.subscribe(sub_strip_back);  
+  nh.subscribe(sub_strip_eye);  
+  nh.advertise(pub_nucleo);    
+  delay(100); 
+  nh.initNode();
+  nh.subscribe(sub_strip_front);  
+  nh.subscribe(sub_strip_top);  
+  nh.subscribe(sub_strip_lidar);  
+  nh.subscribe(sub_strip_bottom); 
+  nh.subscribe(sub_strip_back);  
+  nh.subscribe(sub_strip_eye);      
+  nh.advertise(pub_nucleo);    
+  delay(100);   
+  nucleo_msg.data = 64;  
 //  nh.advertise(chatter); 
 
 //  str_msg.data = hello;
 //  chatter.publish( &str_msg );
- 
+
+  cli();  // 禁止中斷
+  TCCR1A = 0;
+  TCCR1B = 0; 
+  TCCR1B |= (1<<WGM12);  // CTC mode; Clear Timer on Compare
+
+  TCCR1B |= (1<<CS10) | (1<<CS11);  // Prescaler == 64
+
+  OCR1A = myTOP;  // TOP count for CTC, 與 prescaler 有關
+  TCNT1=0;  // counter 歸零 
+  TIMSK1 |= (1 << OCIE1A);  // enable CTC for TIMER1_COMPA_vect
+  sei();  // 允許中斷  
   
 }
 
 void loop() {
   //initial_neopixel(); 
   t_update_rgb.update();
-  t_show_color.update();
+  //t_show_color.update();
   nh.spinOnce();
 }
 
@@ -141,34 +265,86 @@ void topCb( const std_msgs::ColorRGBA& rec_msg){
 //    chatter.publish( &str_msg );
 }
 
+void lidarCb( const std_msgs::ColorRGBA& rec_msg){
+    // once any ros parameters changed, reset the "count_lidar "/ "count_bottom"
+    if(rec_msg.a != lidar_rgba_.a || rec_msg.r != lidar_rgba_.r || rec_msg.g != lidar_rgba_.g || rec_msg.b != lidar_rgba_.b){
+        count_lidar = 0;
+    }
+    lidar_rgba_ = rec_msg;
+    
+//    str_msg.data = "lidar_cb"; 
+//    chatter.publish( &str_msg );
+}
+
+void bottomCb( const std_msgs::ColorRGBA& rec_msg){
+    if(rec_msg.a != bottom_rgba_.a || rec_msg.r != bottom_rgba_.r || rec_msg.g != bottom_rgba_.g || rec_msg.b != bottom_rgba_.b){
+        count_bottom = 0;
+    }  
+    bottom_rgba_ = rec_msg;
+    
+//    str_msg.data = "bottom_cb"; 
+//    chatter.publish( &str_msg );
+}
+
+void backCb( const std_msgs::ColorRGBA& rec_msg){
+    // once any ros parameters changed, reset the "count_back "/ "count_eye"
+    if(rec_msg.a != back_rgba_.a || rec_msg.r != back_rgba_.r || rec_msg.g != back_rgba_.g || rec_msg.b != back_rgba_.b){
+        count_back = 0;
+    }
+    back_rgba_ = rec_msg;
+    
+//    str_msg.data = "back_cb"; 
+//    chatter.publish( &str_msg );
+}
+
+void eyeCb( const std_msgs::ColorRGBA& rec_msg){
+    if(rec_msg.a != eye_rgba_.a || rec_msg.r != eye_rgba_.r || rec_msg.g != eye_rgba_.g || rec_msg.b != eye_rgba_.b){
+        count_eye = 0;
+    }  
+    eye_rgba_ = rec_msg;
+    
+//    str_msg.data = "eye_cb"; 
+//    chatter.publish( &str_msg );
+}
 
 
 void initial_neopixel(void){
   front_rgba_.a = top_rgba_.a = 1;
-  
+  lidar_rgba_.a = bottom_rgba_.a = 1;
+
   front_rgba_.r = 0;
   front_rgba_.g = 100;
   front_rgba_.b = 0;
-  
   top_rgba_.r = 10;
   top_rgba_.g = 10;
   top_rgba_.b = 10;
+  lidar_rgba_.r = bottom_rgba_.r = 37;
+  lidar_rgba_.g = bottom_rgba_.g = 50;
+  lidar_rgba_.b = bottom_rgba_.b = 33;  
         
   // Init all the strips
   strip_FRONT_LEFT.begin();
   strip_FRONT_RIGHT.begin();
   strip_TOP_LEFT.begin();
   strip_TOP_RIGHT.begin();
-
+  strip_LIDAR.begin();
+  strip_NONE.begin();
+  strip_BOTTOM_LEFT.begin();
+  strip_BOTTOM_RIGHT.begin();
 
   fillAll(strip_FRONT_LEFT, strip_FRONT_RIGHT, strip_FRONT_LEFT.Color(front_rgba_.r, front_rgba_.g, front_rgba_.b));
   fillAll(strip_TOP_LEFT, strip_TOP_RIGHT, strip_TOP_LEFT.Color(top_rgba_.r, top_rgba_.g, top_rgba_.b));
-
+  fillAll(strip_LIDAR, strip_NONE, strip_LIDAR.Color(lidar_rgba_.r, lidar_rgba_.g, lidar_rgba_.b));
+  fillAll(strip_BOTTOM_LEFT, strip_BOTTOM_RIGHT, strip_BOTTOM_LEFT.Color(bottom_rgba_.r, bottom_rgba_.g, bottom_rgba_.b));
 
   strip_FRONT_LEFT.show(); 
   strip_FRONT_RIGHT.show(); 
   strip_TOP_LEFT.show(); 
   strip_TOP_RIGHT.show(); 
+  strip_LIDAR.show(); 
+  strip_NONE.show(); 
+  strip_BOTTOM_LEFT.show(); 
+  strip_BOTTOM_RIGHT.show(); 
 }
 
 
@@ -244,6 +420,145 @@ void update_rgb(void* context){
     default: 
         break;     
   }
+
+  // Depending on the mode to set the lidar strips
+  switch((int) lidar_rgba_.a)
+  {       
+    case 1: 
+        fillAll(strip_LIDAR, strip_NONE, strip_LIDAR.Color(lidar_rgba_.r, lidar_rgba_.g, lidar_rgba_.b));
+        break;
+    case 2: 
+        colortWipe(strip_LIDAR, strip_NONE, strip_LIDAR.Color(lidar_rgba_.r, lidar_rgba_.g, lidar_rgba_.b), count_lidar);
+        break;
+    case 3:
+        colorBlink(strip_LIDAR, strip_NONE, strip_LIDAR.Color(lidar_rgba_.r, lidar_rgba_.g, lidar_rgba_.b), count_lidar, blink_flag_lidar);
+        break;   
+    case 4:
+        snakeScroll(strip_LIDAR, strip_NONE, strip_LIDAR.Color(lidar_rgba_.r, lidar_rgba_.g, lidar_rgba_.b), count_lidar, snake_flag_lidar);
+        break;
+    case 5:
+        breathAll(strip_LIDAR, strip_NONE, lidar_rgba_, count_lidar, breath_flag_lidar);
+        break;
+    case 6:
+        rainbow(strip_LIDAR, strip_NONE, lidar_rgba_,count_lidar);
+        break;
+    case 7: 
+        leftTurn(strip_LIDAR, strip_NONE, strip_LIDAR.Color(lidar_rgba_.r, lidar_rgba_.g, lidar_rgba_.b));
+        break;
+    case 8: 
+        rightTurn(strip_LIDAR, strip_NONE, strip_LIDAR.Color(lidar_rgba_.r, lidar_rgba_.g, lidar_rgba_.b));
+        break;
+    case 9:
+        monoChase(strip_LIDAR, strip_NONE, lidar_rgba_, count_lidar, snake_flag_lidar);
+        break;
+    default: 
+        break;
+        
+  }
+
+  // Depending on the mode to set the bottom strips
+  switch((int) bottom_rgba_.a)
+  {       
+    case 1: 
+        fillAll(strip_BOTTOM_LEFT, strip_BOTTOM_RIGHT, strip_BOTTOM_LEFT.Color(bottom_rgba_.r, bottom_rgba_.g, bottom_rgba_.b));
+        break;
+    case 2: 
+        colortWipe(strip_BOTTOM_LEFT, strip_BOTTOM_RIGHT, strip_BOTTOM_LEFT.Color(bottom_rgba_.r, bottom_rgba_.g, bottom_rgba_.b), count_bottom);
+        break;
+    case 3:
+        colorBlink(strip_BOTTOM_LEFT, strip_BOTTOM_RIGHT, strip_BOTTOM_LEFT.Color(bottom_rgba_.r, bottom_rgba_.g, bottom_rgba_.b), count_bottom, blink_flag_bottom);
+        break;   
+    case 4:
+        snakeScroll(strip_BOTTOM_LEFT, strip_BOTTOM_RIGHT, strip_BOTTOM_LEFT.Color(bottom_rgba_.r, bottom_rgba_.g, bottom_rgba_.b), count_bottom, snake_flag_bottom);
+        break;
+    case 5:
+        breathAll(strip_BOTTOM_LEFT, strip_BOTTOM_RIGHT, bottom_rgba_, count_bottom, breath_flag_bottom);
+        break;
+    case 6:
+        rainbow(strip_BOTTOM_LEFT, strip_BOTTOM_RIGHT, bottom_rgba_, count_bottom);
+        break;
+    case 7: 
+        leftTurn(strip_BOTTOM_LEFT, strip_BOTTOM_RIGHT, strip_BOTTOM_LEFT.Color(bottom_rgba_.r, bottom_rgba_.g, bottom_rgba_.b));
+        break;
+    case 8: 
+        rightTurn(strip_BOTTOM_LEFT, strip_BOTTOM_RIGHT, strip_BOTTOM_LEFT.Color(bottom_rgba_.r, bottom_rgba_.g, bottom_rgba_.b));
+        break;
+    case 9:
+        monoChase(strip_BOTTOM_LEFT, strip_BOTTOM_RIGHT, bottom_rgba_, count_bottom, snake_flag_bottom);
+        break;
+    default: 
+        break;     
+  }
+
+  // Depending on the mode to set the back strips
+  switch((int) back_rgba_.a)
+  {       
+    case 1: 
+        fillAll(strip_BACK_LEFT, strip_BACK_RIGHT, strip_BACK_LEFT.Color(back_rgba_.r, back_rgba_.g, back_rgba_.b));
+        break;
+    case 2: 
+        colortWipe(strip_BACK_LEFT, strip_BACK_RIGHT, strip_BACK_LEFT.Color(back_rgba_.r, back_rgba_.g, back_rgba_.b), count_back);
+        break;
+    case 3:
+        colorBlink(strip_BACK_LEFT, strip_BACK_RIGHT, strip_BACK_LEFT.Color(back_rgba_.r, back_rgba_.g, back_rgba_.b), count_back, blink_flag_back);
+        break;   
+    case 4:
+        snakeScroll(strip_BACK_LEFT, strip_BACK_RIGHT, strip_BACK_LEFT.Color(back_rgba_.r, back_rgba_.g, back_rgba_.b), count_back, snake_flag_back);
+        break;
+    case 5:
+        breathAll(strip_BACK_LEFT, strip_BACK_RIGHT, back_rgba_, count_back, breath_flag_back);
+        break;
+    case 6:
+        rainbow(strip_BACK_LEFT, strip_BACK_RIGHT, back_rgba_,count_back);
+        break;
+    case 7:
+        leftTurn(strip_BACK_LEFT, strip_BACK_RIGHT, strip_BACK_LEFT.Color(back_rgba_.r, back_rgba_.g, back_rgba_.b));
+        break;
+    case 8:
+        rightTurn(strip_BACK_LEFT, strip_BACK_RIGHT, strip_BACK_LEFT.Color(back_rgba_.r, back_rgba_.g, back_rgba_.b));
+        break;
+    case 9:
+        monoChase(strip_BACK_LEFT, strip_BACK_RIGHT, back_rgba_, count_back, snake_flag_back);
+        break;
+    default: 
+        break;
+        
+  }
+  
+  // Depending on the mode to set the eye strips
+  switch((int) eye_rgba_.a)
+  {       
+    case 1: 
+        fillAll(strip_EYE_LEFT, strip_EYE_RIGHT, strip_EYE_LEFT.Color(eye_rgba_.r, eye_rgba_.g, eye_rgba_.b));
+        break;
+    case 2: 
+        colortWipe(strip_EYE_LEFT, strip_EYE_RIGHT, strip_EYE_LEFT.Color(eye_rgba_.r, eye_rgba_.g, eye_rgba_.b), count_eye);
+        break;
+    case 3:
+        colorBlink(strip_EYE_LEFT, strip_EYE_RIGHT, strip_EYE_LEFT.Color(eye_rgba_.r, eye_rgba_.g, eye_rgba_.b), count_eye, blink_flag_eye);
+        break;   
+    case 4:
+        snakeScroll(strip_EYE_LEFT, strip_EYE_RIGHT, strip_EYE_LEFT.Color(eye_rgba_.r, eye_rgba_.g, eye_rgba_.b), count_eye, snake_flag_eye);
+        break;
+    case 5:
+        breathAll(strip_EYE_LEFT, strip_EYE_RIGHT, eye_rgba_, count_eye, breath_flag_eye);
+        break;
+    case 6:
+        rainbow(strip_EYE_LEFT, strip_EYE_RIGHT, eye_rgba_,count_eye);
+        break;
+    case 7: 
+        leftTurn(strip_EYE_LEFT, strip_EYE_RIGHT, strip_EYE_LEFT.Color(eye_rgba_.r, eye_rgba_.g, eye_rgba_.b));
+        break;
+    case 8: 
+        rightTurn(strip_EYE_LEFT, strip_EYE_RIGHT, strip_EYE_LEFT.Color(eye_rgba_.r, eye_rgba_.g, eye_rgba_.b));
+        break;  
+    case 9:
+        monoChase(strip_EYE_LEFT, strip_EYE_RIGHT, eye_rgba_, count_eye, snake_flag_eye);
+        break;
+    default: 
+        break;     
+  }
+
 }
 
 // Show all the color setting
@@ -252,6 +567,15 @@ void show_color(void* context){
   strip_FRONT_RIGHT.show(); 
   strip_TOP_LEFT.show(); 
   strip_TOP_RIGHT.show(); 
+  strip_LIDAR.show(); 
+  strip_NONE.show(); 
+  strip_BOTTOM_LEFT.show(); 
+  strip_BOTTOM_RIGHT.show();   
+  strip_BACK_LEFT.show(); 
+  strip_BACK_RIGHT.show(); 
+  strip_EYE_LEFT.show(); 
+  strip_EYE_RIGHT.show();  
+  pub_nucleo.publish(&nucleo_msg);    
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
