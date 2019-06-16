@@ -160,9 +160,13 @@ ros::Subscriber<std_msgs::ColorRGBA> sub_strip_eye("strip_eye", &eyeCb);
 //char cstr[] = "";
 
 /// For Prescaler == 64
-///  1 秒 / (100 000 000 / 64) = 1/1562500 =  0.00000064 sec / per cycle
-/// 0.1 sec / 0.00000064 sec -1 = 156250 -1 = 156249
-/// 0.0001 sec / 0.000004 sec -1 = 25 -1 = 24
+/// Base rate = 16MHz
+/// 1 秒 / (16 000 000 / 64)= 4*10^(-6)= 0.000004 sec / per cycle
+/// For 25Hz = 0.04 sec period
+/// 0.04 sec / 0.000004 sec = 10000 (actually should be 10000-1 cuz count from 0)
+/// For 50Hz = 0.02 sec period
+/// 0.02 sec / 0.000004 sec = 5000 (actually should be 5000-1 cuz count from 0)
+
 volatile int ggyy = 1; 
 const int myTOP = 10000;
 ISR(TIMER1_COMPA_vect)
