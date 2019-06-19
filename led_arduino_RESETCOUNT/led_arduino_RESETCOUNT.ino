@@ -14,19 +14,19 @@
   #include <avr/power.h>
 #endif
 #include <SPI.h>
-  
-#define PIN_FRONT_LEFT 31
-#define PIN_FRONT_RIGHT 33
-#define PIN_TOP_LEFT 35
-#define PIN_TOP_RIGHT 37
-#define PIN_LIDAR 39
-#define PIN_NONE 41
-#define PIN_BOTTOM_LEFT 43
-#define PIN_BOTTOM_RIGHT 45
-#define PIN_BACK_LEFT 32
-#define PIN_BACK_RIGHT 34
-#define PIN_EYE_LEFT 36
-#define PIN_EYE_RIGHT 38
+
+#define PIN_FRONT_LEFT 23
+#define PIN_FRONT_RIGHT 25
+#define PIN_TOP_LEFT 27
+#define PIN_TOP_RIGHT 29
+#define PIN_LIDAR 31
+#define PIN_NONE 33
+#define PIN_BOTTOM_LEFT 35
+#define PIN_BOTTOM_RIGHT 37
+#define PIN_BACK_LEFT 39
+#define PIN_BACK_RIGHT 41
+#define PIN_EYE_LEFT 43
+#define PIN_EYE_RIGHT 45
 
 #define PIXEL_FRONT_LEFT 92
 #define PIXEL_FRONT_RIGHT 91
@@ -61,6 +61,7 @@ void eyeCb( const std_msgs::ColorRGBA& rec_msg);
 void initial_neopixel(void);
 void update_rgb(void* context);
 void show_color(void* context);
+void showAll(void);
 void fillAll(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, uint32_t c);
 void colorWipe(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, uint32_t c, long &count);
 void colorBlink(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, uint32_t c, long &count, bool &flag);
@@ -71,6 +72,9 @@ void rainbow(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, std_msgs::C
 void monoChase(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, std_msgs::ColorRGBA &rgba, long &count, bool &flag);
 void leftTurn(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, uint32_t c);
 void rightTurn(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, uint32_t c);
+
+void resetCount(void);
+void resetFlag(void);
 
 // Parameter
 bool blink_flag_front = true;
@@ -166,16 +170,13 @@ volatile int ggyy = 1;
 const int myTOP = 10000;
 ISR(TIMER1_COMPA_vect)
 {
-  strip_FRONT_LEFT.show(); 
-  strip_FRONT_RIGHT.show(); 
-  strip_TOP_LEFT.show(); 
-  strip_TOP_RIGHT.show(); 
-  strip_LIDAR.show(); 
-  strip_NONE.show(); 
-  strip_BOTTOM_LEFT.show(); 
-  strip_BOTTOM_RIGHT.show();   
-  pub_nucleo.publish(&nucleo_msg);  
-  ggyy = 1 - ggyy; //  給下次進入  ISR 用
+  cli();                    // disable interrupt
+   
+  showAll();
+  
+  ggyy = 1 - ggyy;          // ready for next time into ISR
+  TCNT1=0;                  // counter return to zero 
+  sei();                    // enable interrupt
 }
 
 
@@ -239,9 +240,10 @@ void loop() {
 }
 
 void frontCb( const std_msgs::ColorRGBA& rec_msg){
-    // once any ros parameters changed, reset the "count_front "/ "count_top"
     if(rec_msg.a != front_rgba_.a || rec_msg.r != front_rgba_.r || rec_msg.g != front_rgba_.g || rec_msg.b != front_rgba_.b){
-        count_front = 0;
+        //count_front = 0;
+        resetCount();
+        resetFlag();
     }
     front_rgba_ = rec_msg;
 
@@ -249,16 +251,19 @@ void frontCb( const std_msgs::ColorRGBA& rec_msg){
 
 void topCb( const std_msgs::ColorRGBA& rec_msg){
     if(rec_msg.a != top_rgba_.a || rec_msg.r != top_rgba_.r || rec_msg.g != top_rgba_.g || rec_msg.b != top_rgba_.b){
-        count_top = 0;
+        //count_top = 0;
+        resetCount();
+        resetFlag();
     }  
     top_rgba_ = rec_msg;
 
 }
 
 void lidarCb( const std_msgs::ColorRGBA& rec_msg){
-    // once any ros parameters changed, reset the "count_lidar "/ "count_bottom"
     if(rec_msg.a != lidar_rgba_.a || rec_msg.r != lidar_rgba_.r || rec_msg.g != lidar_rgba_.g || rec_msg.b != lidar_rgba_.b){
-        count_lidar = 0;
+        //count_lidar = 0;
+        resetCount();
+        resetFlag();
     }
     lidar_rgba_ = rec_msg;
     
@@ -266,7 +271,9 @@ void lidarCb( const std_msgs::ColorRGBA& rec_msg){
 
 void bottomCb( const std_msgs::ColorRGBA& rec_msg){
     if(rec_msg.a != bottom_rgba_.a || rec_msg.r != bottom_rgba_.r || rec_msg.g != bottom_rgba_.g || rec_msg.b != bottom_rgba_.b){
-        count_bottom = 0;
+        //count_bottom = 0;
+        resetCount();
+        resetFlag();
     }  
     bottom_rgba_ = rec_msg;
     
@@ -275,7 +282,9 @@ void bottomCb( const std_msgs::ColorRGBA& rec_msg){
 void backCb( const std_msgs::ColorRGBA& rec_msg){
     // once any ros parameters changed, reset the "count_back "/ "count_eye"
     if(rec_msg.a != back_rgba_.a || rec_msg.r != back_rgba_.r || rec_msg.g != back_rgba_.g || rec_msg.b != back_rgba_.b){
-        count_back = 0;
+        //count_back = 0;
+        resetCount();
+        resetFlag();
     }
     back_rgba_ = rec_msg;
     
@@ -283,7 +292,9 @@ void backCb( const std_msgs::ColorRGBA& rec_msg){
 
 void eyeCb( const std_msgs::ColorRGBA& rec_msg){
     if(rec_msg.a != eye_rgba_.a || rec_msg.r != eye_rgba_.r || rec_msg.g != eye_rgba_.g || rec_msg.b != eye_rgba_.b){
-        count_eye = 0;
+        //count_eye = 0;
+        resetCount();
+        resetFlag();
     }  
     eye_rgba_ = rec_msg;
     
@@ -293,17 +304,40 @@ void eyeCb( const std_msgs::ColorRGBA& rec_msg){
 void initial_neopixel(void){
   front_rgba_.a = top_rgba_.a = 1;
   lidar_rgba_.a = bottom_rgba_.a = 1;
+  back_rgba_.a = eye_rgba_.a = 1;
 
-  front_rgba_.r = 0;
-  front_rgba_.g = 100;
-  front_rgba_.b = 0;
-  top_rgba_.r = 10;
-  top_rgba_.g = 10;
-  top_rgba_.b = 10;
-  lidar_rgba_.r = bottom_rgba_.r = 37;
-  lidar_rgba_.g = bottom_rgba_.g = 50;
-  lidar_rgba_.b = bottom_rgba_.b = 33;  
-        
+  // front_rgba_.r = 0;
+  // front_rgba_.g = 100;
+  // front_rgba_.b = 0;
+  // top_rgba_.r = 10;
+  // top_rgba_.g = 10;
+  // top_rgba_.b = 10;
+  // lidar_rgba_.r = bottom_rgba_.r = 37;
+  // lidar_rgba_.g = bottom_rgba_.g = 50;
+  // lidar_rgba_.b = bottom_rgba_.b = 33;  
+  // eye_rgba_.r = 49;
+  // eye_rgba_.g = 50;
+  // eye_rgba_.b = 37;
+  // back_rgba_.r = 37;
+  // back_rgba_.g = 50;
+  // back_rgba_.b = 33;
+
+  front_rgba_.r = 20;
+  front_rgba_.g = 20;
+  front_rgba_.b = 20;
+  top_rgba_.r = 20;
+  top_rgba_.g = 20;
+  top_rgba_.b = 20;
+  lidar_rgba_.r = bottom_rgba_.r = 20;
+  lidar_rgba_.g = bottom_rgba_.g = 20;
+  lidar_rgba_.b = bottom_rgba_.b = 20;  
+  eye_rgba_.r = 20;
+  eye_rgba_.g = 20;
+  eye_rgba_.b = 20;
+  back_rgba_.r = 20;
+  back_rgba_.g = 20;
+  back_rgba_.b = 20;
+
   // Init all the strips
   strip_FRONT_LEFT.begin();
   strip_FRONT_RIGHT.begin();
@@ -313,11 +347,17 @@ void initial_neopixel(void){
   strip_NONE.begin();
   strip_BOTTOM_LEFT.begin();
   strip_BOTTOM_RIGHT.begin();
+  strip_BACK_LEFT.begin();
+  strip_BACK_RIGHT.begin();
+  strip_EYE_LEFT.begin();
+  strip_EYE_RIGHT.begin(); 
 
   fillAll(strip_FRONT_LEFT, strip_FRONT_RIGHT, strip_FRONT_LEFT.Color(front_rgba_.r, front_rgba_.g, front_rgba_.b));
   fillAll(strip_TOP_LEFT, strip_TOP_RIGHT, strip_TOP_LEFT.Color(top_rgba_.r, top_rgba_.g, top_rgba_.b));
   fillAll(strip_LIDAR, strip_NONE, strip_LIDAR.Color(lidar_rgba_.r, lidar_rgba_.g, lidar_rgba_.b));
   fillAll(strip_BOTTOM_LEFT, strip_BOTTOM_RIGHT, strip_BOTTOM_LEFT.Color(bottom_rgba_.r, bottom_rgba_.g, bottom_rgba_.b));
+  fillAll(strip_BACK_LEFT, strip_BACK_RIGHT, strip_BACK_LEFT.Color(back_rgba_.r, back_rgba_.g, back_rgba_.b));
+  fillAll(strip_EYE_LEFT, strip_EYE_RIGHT, strip_EYE_LEFT.Color(eye_rgba_.r, eye_rgba_.g, eye_rgba_.b));
 
   strip_FRONT_LEFT.show(); 
   strip_FRONT_RIGHT.show(); 
@@ -327,6 +367,10 @@ void initial_neopixel(void){
   strip_NONE.show(); 
   strip_BOTTOM_LEFT.show(); 
   strip_BOTTOM_RIGHT.show(); 
+  strip_BACK_LEFT.show(); 
+  strip_BACK_RIGHT.show(); 
+  strip_EYE_LEFT.show(); 
+  strip_EYE_RIGHT.show();  
 }
 
 
@@ -560,6 +604,23 @@ void show_color(void* context){
   pub_nucleo.publish(&nucleo_msg);    
 }
 
+// Show all the color setting
+void showAll(void){
+  strip_FRONT_LEFT.show(); 
+  strip_FRONT_RIGHT.show(); 
+  strip_TOP_LEFT.show(); 
+  strip_TOP_RIGHT.show(); 
+  strip_LIDAR.show(); 
+  //strip_NONE.show(); 
+  strip_BOTTOM_LEFT.show(); 
+  strip_BOTTOM_RIGHT.show();   
+  strip_BACK_LEFT.show(); 
+  strip_BACK_RIGHT.show(); 
+  strip_EYE_LEFT.show(); 
+  strip_EYE_RIGHT.show();  
+  //pub_nucleo.publish(&nucleo_msg);    
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Set all the dots with a color
 void fillAll(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, uint32_t c) {
@@ -599,8 +660,6 @@ void colortWipe(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, uint32_t
 // Toggle all the dots with a color
 void colorBlink(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, uint32_t c, long &count, bool &flag) {
   if (flag){
-      
-
       if (count ==0){
         fillAll(strip_l, strip_r, c);
         count += 1;
@@ -612,10 +671,8 @@ void colorBlink(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, uint32_t
         flag = false;
         count = 0; 
       }
-      
   }
   else {
-
       if (count ==0){
         fillAll(strip_l, strip_r, 0);
         count += 1;
@@ -627,7 +684,6 @@ void colorBlink(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, uint32_t
         flag = true;
         count = 0; 
       }
-
   }
 
 }
@@ -770,4 +826,37 @@ void monoChase(Adafruit_NeoPixel &strip_l, Adafruit_NeoPixel &strip_r, std_msgs:
       count -= 1;
     }
   } 
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+void resetCount(void){
+  count_front = 0;
+  count_top = 0;
+  count_lidar = 0;
+  count_bottom = 0;
+  count_back = 0;
+  count_eye = 0;
+}
+
+void resetFlag(void){
+  blink_flag_front = true;
+  blink_flag_top = true;
+  blink_flag_lidar = true;
+  blink_flag_bottom = true;
+  blink_flag_back = true;
+  blink_flag_eye = true;
+
+  snake_flag_front = true;
+  snake_flag_top = true;
+  snake_flag_lidar = true;
+  snake_flag_bottom = true;
+  snake_flag_back = true;
+  snake_flag_eye = true;
+
+  breath_flag_front = true;
+  breath_flag_top = true;
+  breath_flag_lidar = true;
+  breath_flag_bottom = true;
+  breath_flag_back = true;
+  breath_flag_eye = true;
 }
